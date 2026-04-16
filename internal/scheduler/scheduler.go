@@ -1,7 +1,3 @@
 package schedule
 
-import (
-	"sync"
-)
-
 

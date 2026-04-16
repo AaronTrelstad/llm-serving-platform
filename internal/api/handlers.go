@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aarontrelstad/inference-scheduler/internal/models"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -65,7 +66,28 @@ func (h *Handlers) SubmitInference(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) GetJob(w http.ResponseWriter, r *http.Request) {
+	jobID := chi.URLParam(r, "jobID")
 
+	h.mutex.Lock()
+	job, ok := h.jobs[jobID]
+	h.mutex.Unlock()
+
+	if !ok {
+		http.Error(w, "job not found", http.StatusNotFound)
+		return
+	}
+
+	response := models.StatusResponse {
+		JobID: jobID,
+		Status: job.Status,
+		Output: job.Output,
+		LatencyMs: job.LatencyMs,
+		AssignedTo: job.AssignedWorker,
+		Error: job.ErrorMsg,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func (h *Handlers) GetWorkers(w http.ResponseWriter, r *http.Request) {
@@ -77,5 +99,5 @@ func (h *Handlers) GetHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) GetMetrics(w http.ResponseWriter, r *http.Request) {
-	
+
 }
