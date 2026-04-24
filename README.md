@@ -1,1 +1,1 @@
-Designed GPU-aware inference scheduler with PagedAttention-inspired KV cache routing on Kubernetes.
+End-to-end LLM inference engine built from scratch, with a Rust core covering the transformer, PagedAttention KV cache, and a tiered NVMe/HDD object store using io_uring and SPDK. A Go HTTP backend handles request intake and GPU-aware scheduling, routing inference jobs to Rust workers via gRPC based on cache locality. Deployed on Kubernetes with Prometheus metrics and Docker containerization.

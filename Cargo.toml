@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "rust/transformer",
+    "rust/kvcache",
+    "rust/objectstore",
+]
