@@ -1,22 +1,21 @@
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Result, Seek, SeekFrom, Write};
 use std::cmp;
 
 pub struct Wal {
     file: File,
-    path: Path,
     sequence: u64
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub enum WalRecordType {
     Job,
     GpuMetric,
     ChatMessages
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct WalRecord {
     pub sequence: u64,
     pub timestamp: u64,
@@ -25,14 +24,14 @@ pub struct WalRecord {
 }
 
 impl Wal {
-    pub fn open(path: Path) -> Result<Self> {
+    pub fn open(path: PathBuf) -> Result<Self> {
         let file = OpenOptions::new()
             .create(true)
             .append(true)
             .read(true)
             .open(&path)?;
 
-        let mut wal = Self { file, path, sequence: 0 };
+        let mut wal = Self { file, sequence: 0 };
         wal.recover()?;
         Ok(wal)
     }
@@ -40,8 +39,10 @@ impl Wal {
     pub fn append(&mut self, record: &WalRecord) -> Result<()> {
         self.sequence += 1;
         let record = WalRecord {
-            sequence: self.sequence,
-            ..*record
+            sequence:    self.sequence,
+            timestamp:   record.timestamp,
+            record_type: record.record_type.clone(), 
+            payload:     record.payload.clone(),
         };
 
         let bytes = bincode::serialize(&record)
@@ -51,7 +52,7 @@ impl Wal {
         self.file.write_all(&len.to_le_bytes())?;
         self.file.write_all(&bytes)?;
         self.file.sync_all()?;
-        Ok(());
+        Ok(())
     }
 
     pub fn recover(&mut self) -> Result<Vec<WalRecord>> {
@@ -68,7 +69,7 @@ impl Wal {
 
             let len = u64::from_le_bytes(len_buf) as usize;
             
-            let mut buf = vec![0u8, len];
+            let mut buf = vec![0u8; len];
             match self.file.read_exact(&mut buf) {
                 Ok(_) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
@@ -82,15 +83,13 @@ impl Wal {
             records.push(record);
         }
 
-        Ok(records);
-
+        Ok(records)
     }
 
     pub fn truncate(&mut self) -> Result<()> {
         self.file.set_len(0)?;
         self.file.seek(SeekFrom::Start(0))?;
         self.file.sync_all()?;
-        Ok(());
-
+        Ok(())
     }
 }
