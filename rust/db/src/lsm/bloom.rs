@@ -5,16 +5,17 @@ use std::hash::{Hash, Hasher};
 pub struct BloomFilter {
     bits: Vec<u8>,
     num_bits: usize,
-    num_hashes: usize 
+    num_hashes: usize,
 }
 
 impl BloomFilter {
     pub fn new(expected_items: usize, false_positive_rate: f64) -> Self {
-        let num_bits = (-(expected_items as f64) * false_positive_rate.ln()) / (2.0_f64.ln().powi(2));
+        let num_bits =
+            (-(expected_items as f64) * false_positive_rate.ln()) / (2.0_f64.ln().powi(2));
         let num_bits = num_bits as usize;
-    
+
         let num_hashes = ((num_bits as f64 / expected_items as f64) * 2.0_f64.ln()) as usize;
-    
+
         Self {
             bits: vec![0u8; (num_bits + 7) / 8],
             num_bits,

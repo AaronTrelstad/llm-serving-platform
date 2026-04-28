@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io::{Result, Read, Seek, SeekFrom, Write};
+use std::io::{Read, Result, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
 use super::bloom::BloomFilter;
@@ -26,9 +26,9 @@ impl SSTable {
         let mut bloom_filter = BloomFilter::new(1_000_000, 0.01);
 
         let index_offset;
-    
+
         {
-            let mut writer = std::io::BufWriter::new(&file);        
+            let mut writer = std::io::BufWriter::new(&file);
             let mut offset = 0;
 
             for (key, value) in memtable.iter() {
@@ -53,15 +53,15 @@ impl SSTable {
             writer.write_all(&index_bytes)?;
             offset += 8 + index_bytes.len() as u64;
 
-            let bloom_offset = offset; 
+            let bloom_offset = offset;
             let bloom_bytes = bincode::serialize(&bloom_filter)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             writer.write_all(&(bloom_bytes.len() as u64).to_le_bytes())?;
             writer.write_all(&bloom_bytes)?;
 
-            writer.write_all(&index_offset.to_le_bytes())?; 
-            writer.write_all(&bloom_offset.to_le_bytes())?;  
-            writer.write_all(&(memtable.size() as u64).to_le_bytes())?;  
+            writer.write_all(&index_offset.to_le_bytes())?;
+            writer.write_all(&bloom_offset.to_le_bytes())?;
+            writer.write_all(&(memtable.size() as u64).to_le_bytes())?;
 
             writer.flush()?;
         }
@@ -71,14 +71,12 @@ impl SSTable {
             file,
             index,
             bloom_filter,
-            index_offset
+            index_offset,
         })
     }
 
     pub fn open(path: PathBuf) -> Result<Self> {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .open(&path)?;
+        let mut file = OpenOptions::new().read(true).open(&path)?;
 
         file.seek(SeekFrom::End(-24))?;
         let mut footer = [0u8; 24];
@@ -110,7 +108,7 @@ impl SSTable {
             file,
             index,
             bloom_filter,
-            index_offset
+            index_offset,
         })
     }
 
@@ -118,32 +116,32 @@ impl SSTable {
         if !self.bloom_filter.contains(key) {
             return Ok(None);
         }
-    
+
         let offset = match self.index.get(key) {
             Some(o) => *o,
-            None    => return Ok(None), 
+            None => return Ok(None),
         };
-    
+
         self.file.seek(SeekFrom::Start(offset))?;
-    
+
         let mut key_len_buf = [0u8; 8];
         self.file.read_exact(&mut key_len_buf)?;
         let key_len = u64::from_le_bytes(key_len_buf) as usize;
         self.file.seek(SeekFrom::Current(key_len as i64))?;
-    
+
         let mut val_len_buf = [0u8; 8];
         self.file.read_exact(&mut val_len_buf)?;
         let val_len = u64::from_le_bytes(val_len_buf) as usize;
         let mut value = vec![0u8; val_len];
         self.file.read_exact(&mut value)?;
-    
+
         Ok(Some(value))
     }
 
     pub fn iter(&mut self) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
         self.file.seek(SeekFrom::Start(0))?;
         let mut records = Vec::new();
-    
+
         loop {
             if self.file.stream_position()? >= self.index_offset {
                 break;
@@ -158,18 +156,16 @@ impl SSTable {
             let key_len = u64::from_le_bytes(len_buf) as usize;
             let mut key = vec![0u8; key_len];
             self.file.read_exact(&mut key)?;
-    
+
             let mut val_len_buf = [0u8; 8];
             self.file.read_exact(&mut val_len_buf)?;
             let val_len = u64::from_le_bytes(val_len_buf) as usize;
             let mut value = vec![0u8; val_len];
             self.file.read_exact(&mut value)?;
-    
+
             records.push((key, value));
         }
-    
+
         Ok(records)
     }
 }
-
-

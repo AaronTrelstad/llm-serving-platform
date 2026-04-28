@@ -1,53 +1,58 @@
 use crate::btree::btree::BTree;
 use crate::lsm::lsm::LSMTree;
 use crate::wal::wal::WALRecordType;
+use std::collections::HashMap;
 use std::io::Result;
 use std::path::PathBuf;
-use std::collections::HashMap;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct JobRecord {
-    pub job_id:            String,
-    pub status:            String,
-    pub prompt:            String,
-    pub output:            String,
+    pub job_id: String,
+    pub status: String,
+    pub prompt: String,
+    pub output: String,
     pub prefill_worker_id: Option<String>,
-    pub decode_worker_id:  Option<String>,
-    pub latency:           u64,
-    pub timestamp:         u64,
+    pub decode_worker_id: Option<String>,
+    pub latency: u64,
+    pub timestamp: u64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct MetricRecord {
-    pub worker_id:      String,
-    pub gpu_memory:     f32,
-    pub gpu_util:       f32,
-    pub active_jobs:    u32,
+    pub worker_id: String,
+    pub gpu_memory: f32,
+    pub gpu_util: f32,
+    pub active_jobs: u32,
     pub tokens_per_sec: u32,
-    pub timestamp:      u64,
+    pub timestamp: u64,
 }
 
 pub struct JobFilter {
-    pub status:      Option<String>,
-    pub worker_id:   Option<String>,
-    pub time_range:  Option<(u64, u64)>,
-    pub aggregate:   bool,
+    pub status: Option<String>,
+    pub worker_id: Option<String>,
+    pub time_range: Option<(u64, u64)>,
+    pub aggregate: bool,
 }
 
 pub struct MetricFilter {
-    pub worker_id:   Option<String>,
-    pub time_range:  Option<(u64, u64)>,
+    pub worker_id: Option<String>,
+    pub time_range: Option<(u64, u64)>,
     pub aggregation: Option<GPUAggregation>,
 }
 
-pub enum GPUAggregation { Avg, Max, Min, P99 }
+pub enum GPUAggregation {
+    Avg,
+    Max,
+    Min,
+    P99,
+}
 
 pub struct JobAggregateResult {
-    pub avg_latency:     f64,
-    pub p99_latency:     f64,
-    pub max_latency:     u64,
-    pub min_latency:     u64,
-    pub total_count:     usize,
+    pub avg_latency: f64,
+    pub p99_latency: f64,
+    pub max_latency: u64,
+    pub min_latency: u64,
+    pub total_count: usize,
     pub count_by_status: HashMap<String, usize>,
 }
 
@@ -57,27 +62,33 @@ pub enum JobQueryResult {
 }
 
 pub struct Series {
-    lsm:                 LSMTree,
+    lsm: LSMTree,
     inference_job_btree: BTree,
-    gpu_metrics_btree:   BTree,
+    gpu_metrics_btree: BTree,
+    buf: Vec<u8>,
 }
 
 impl Series {
     pub fn new(data_dir: PathBuf) -> Result<Self> {
         Ok(Self {
-            lsm:                 LSMTree::open(data_dir)?,
+            lsm: LSMTree::open(data_dir)?,
             inference_job_btree: BTree::new(4),
-            gpu_metrics_btree:   BTree::new(4),
+            gpu_metrics_btree: BTree::new(4),
+            buf: Vec::with_capacity(1024),
         })
     }
 
     pub fn insert_job(&mut self, job: JobRecord) -> Result<()> {
         let key = job.job_id.as_bytes().to_vec();
-        let value = bincode::serialize(&job)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
-        self.lsm.put(key, value, WALRecordType::InferenceJob)?;
-        self.inference_job_btree.insert(job.timestamp, job.job_id.clone());
+        self.buf.clear();
+        bincode::serialize_into(&mut self.buf, &job)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        self.lsm
+            .put(key, self.buf.clone(), WALRecordType::InferenceJob)?;
+
+        self.inference_job_btree
+            .insert(job.timestamp, job.job_id.clone());
 
         Ok(())
     }
@@ -91,7 +102,8 @@ impl Series {
 
         self.lsm.put(key, value, WALRecordType::GPUMetric)?;
         let btree_value = format!("{}:{}", metrics.worker_id, metrics.timestamp);
-        self.gpu_metrics_btree.insert(metrics.timestamp, btree_value);
+        self.gpu_metrics_btree
+            .insert(metrics.timestamp, btree_value);
 
         Ok(())
     }
@@ -122,11 +134,14 @@ impl Series {
                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
                     if let Some(ref status) = filter.status {
-                        if &job.status != status { continue; }
+                        if &job.status != status {
+                            continue;
+                        }
                     }
                     if let Some(ref worker_id) = filter.worker_id {
                         if job.prefill_worker_id.as_deref() != Some(worker_id)
-                            && job.decode_worker_id.as_deref() != Some(worker_id) {
+                            && job.decode_worker_id.as_deref() != Some(worker_id)
+                        {
                             continue;
                         }
                     }
@@ -138,7 +153,9 @@ impl Series {
         }
 
         match filter.aggregate {
-            true  => Ok(JobQueryResult::Aggregate(Self::aggregate_inference_jobs(jobs))),
+            true => Ok(JobQueryResult::Aggregate(Self::aggregate_inference_jobs(
+                jobs,
+            ))),
             false => Ok(JobQueryResult::Records(jobs)),
         }
     }
@@ -150,7 +167,9 @@ impl Series {
 
         for entry in entries {
             let parts: Vec<&str> = entry.splitn(2, ':').collect();
-            if parts.len() != 2 { continue; }
+            if parts.len() != 2 {
+                continue;
+            }
             let worker_id = parts[0];
             let timestamp: u64 = parts[1].parse().unwrap_or(0);
 
@@ -163,7 +182,9 @@ impl Series {
                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
                     if let Some(ref wid) = filter.worker_id {
-                        if &metric.worker_id != wid { continue; }
+                        if &metric.worker_id != wid {
+                            continue;
+                        }
                     }
 
                     metrics.push(metric);
@@ -174,7 +195,7 @@ impl Series {
 
         match filter.aggregation {
             Some(agg) => Ok(vec![Self::aggregate_gpu_metrics(metrics, agg)]),
-            None      => Ok(metrics),
+            None => Ok(metrics),
         }
     }
 
@@ -188,11 +209,11 @@ impl Series {
         }
 
         JobAggregateResult {
-            avg_latency:     latencies.iter().sum::<u64>() as f64 / latencies.len() as f64,
-            p99_latency:     latencies[(latencies.len() as f64 * 0.99) as usize] as f64,
-            max_latency:     *latencies.last().unwrap_or(&0),
-            min_latency:     *latencies.first().unwrap_or(&0),
-            total_count:     jobs.len(),
+            avg_latency: latencies.iter().sum::<u64>() as f64 / latencies.len() as f64,
+            p99_latency: latencies[(latencies.len() as f64 * 0.99) as usize] as f64,
+            max_latency: *latencies.last().unwrap_or(&0),
+            min_latency: *latencies.first().unwrap_or(&0),
+            total_count: jobs.len(),
             count_by_status,
         }
     }
@@ -201,14 +222,16 @@ impl Series {
         match agg {
             GPUAggregation::Avg => {
                 let len = metrics.len() as f32;
-                let gpu_memory     = metrics.iter().map(|m| m.gpu_memory).sum::<f32>() / len;
-                let gpu_util       = metrics.iter().map(|m| m.gpu_util).sum::<f32>() / len;
-                let active_jobs    = (metrics.iter().map(|m| m.active_jobs as f32).sum::<f32>() / len) as u32;
-                let tokens_per_sec = (metrics.iter().map(|m| m.tokens_per_sec as f32).sum::<f32>() / len) as u32;
+                let gpu_memory = metrics.iter().map(|m| m.gpu_memory).sum::<f32>() / len;
+                let gpu_util = metrics.iter().map(|m| m.gpu_util).sum::<f32>() / len;
+                let active_jobs =
+                    (metrics.iter().map(|m| m.active_jobs as f32).sum::<f32>() / len) as u32;
+                let tokens_per_sec =
+                    (metrics.iter().map(|m| m.tokens_per_sec as f32).sum::<f32>() / len) as u32;
 
                 MetricRecord {
-                    worker_id:      "aggregate".to_string(),
-                    timestamp:      metrics.last().map(|m| m.timestamp).unwrap_or(0),
+                    worker_id: "aggregate".to_string(),
+                    timestamp: metrics.last().map(|m| m.timestamp).unwrap_or(0),
                     gpu_memory,
                     gpu_util,
                     active_jobs,
@@ -217,20 +240,26 @@ impl Series {
             }
 
             GPUAggregation::Max => MetricRecord {
-                worker_id:      "aggregate".to_string(),
-                timestamp:      metrics.last().map(|m| m.timestamp).unwrap_or(0),
-                gpu_memory:     metrics.iter().map(|m| m.gpu_memory).fold(f32::MIN, f32::max),
-                gpu_util:       metrics.iter().map(|m| m.gpu_util).fold(f32::MIN, f32::max),
-                active_jobs:    metrics.iter().map(|m| m.active_jobs).max().unwrap_or(0),
+                worker_id: "aggregate".to_string(),
+                timestamp: metrics.last().map(|m| m.timestamp).unwrap_or(0),
+                gpu_memory: metrics
+                    .iter()
+                    .map(|m| m.gpu_memory)
+                    .fold(f32::MIN, f32::max),
+                gpu_util: metrics.iter().map(|m| m.gpu_util).fold(f32::MIN, f32::max),
+                active_jobs: metrics.iter().map(|m| m.active_jobs).max().unwrap_or(0),
                 tokens_per_sec: metrics.iter().map(|m| m.tokens_per_sec).max().unwrap_or(0),
             },
 
             GPUAggregation::Min => MetricRecord {
-                worker_id:      "aggregate".to_string(),
-                timestamp:      metrics.last().map(|m| m.timestamp).unwrap_or(0),
-                gpu_memory:     metrics.iter().map(|m| m.gpu_memory).fold(f32::MAX, f32::min),
-                gpu_util:       metrics.iter().map(|m| m.gpu_util).fold(f32::MAX, f32::min),
-                active_jobs:    metrics.iter().map(|m| m.active_jobs).min().unwrap_or(0),
+                worker_id: "aggregate".to_string(),
+                timestamp: metrics.last().map(|m| m.timestamp).unwrap_or(0),
+                gpu_memory: metrics
+                    .iter()
+                    .map(|m| m.gpu_memory)
+                    .fold(f32::MAX, f32::min),
+                gpu_util: metrics.iter().map(|m| m.gpu_util).fold(f32::MAX, f32::min),
+                active_jobs: metrics.iter().map(|m| m.active_jobs).min().unwrap_or(0),
                 tokens_per_sec: metrics.iter().map(|m| m.tokens_per_sec).min().unwrap_or(0),
             },
 
@@ -244,11 +273,11 @@ impl Series {
                 let p99_mem = gpu_mems[(gpu_mems.len() as f32 * 0.99) as usize];
 
                 MetricRecord {
-                    worker_id:      "aggregate".to_string(),
-                    timestamp:      metrics.last().map(|m| m.timestamp).unwrap_or(0),
-                    gpu_memory:     p99_mem,
-                    gpu_util:       p99_util,
-                    active_jobs:    0,
+                    worker_id: "aggregate".to_string(),
+                    timestamp: metrics.last().map(|m| m.timestamp).unwrap_or(0),
+                    gpu_memory: p99_mem,
+                    gpu_util: p99_util,
+                    active_jobs: 0,
                     tokens_per_sec: 0,
                 }
             }

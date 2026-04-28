@@ -1,9 +1,9 @@
-use std::path::PathBuf;
-use crate::lsm::compaction::Compaction;
-use crate::wal::wal::{WAL, WALRecordType, WALRecord};
 use super::memtable::MemTable;
 use super::sstable::SSTable;
+use crate::lsm::compaction::Compaction;
+use crate::wal::wal::{WALRecord, WALRecordType, WAL};
 use std::io::Result;
+use std::path::PathBuf;
 
 pub struct LSMTree {
     wal: WAL,
@@ -13,7 +13,7 @@ pub struct LSMTree {
 }
 
 impl LSMTree {
-    const COMPACTION_THRESHOLD: usize = 4; 
+    const COMPACTION_THRESHOLD: usize = 4;
 
     pub fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         if let Some(value) = self.memtable.get(key) {
@@ -25,7 +25,7 @@ impl LSMTree {
                 return Ok(Some(value));
             }
         }
-        
+
         Ok(None)
     }
 
@@ -42,7 +42,7 @@ impl LSMTree {
         let mut sst_paths: Vec<PathBuf> = std::fs::read_dir(&data_dir)?
             .filter_map(|entry| {
                 let entry = entry.ok()?;
-                let path  = entry.path();
+                let path = entry.path();
                 if path.extension()?.to_str()? == "sst" {
                     Some(path)
                 } else {
@@ -70,35 +70,40 @@ impl LSMTree {
         if self.memtable.is_full() {
             self.flush()?;
         }
-    
-        self.wal.append(&WALRecord {
-            sequence:    0,
-            timestamp:   std::time::SystemTime::now()
+
+        self.wal.append(WALRecord {
+            sequence: 0,
+            timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64,
-            record_type, 
-            key:      key.clone(),
-            value:    value.clone()
+            record_type,
+            key: key.clone(),
+            value: value.clone(),
         })?;
-    
+
         self.memtable.insert(key, value)?;
-    
+
         Ok(())
     }
 
     fn flush(&mut self) -> Result<()> {
-        let path = self.data_dir.join(format!("sstable_{:03}.sst", self.sstables.len()));
+        let path = self
+            .data_dir
+            .join(format!("sstable_{:03}.sst", self.sstables.len()));
+
         let new_sstable = SSTable::write(path, &self.memtable)?;
-        self.sstables.insert(0, new_sstable);  
-        self.memtable = MemTable::new();       
-        self.wal.truncate()?;  
+        self.wal.force_sync()?;
+        self.wal.truncate()?;
+        self.sstables.insert(0, new_sstable);
+        self.memtable = MemTable::new();
 
         if self.should_compact() {
             let compaction = Compaction::new();
             let old = std::mem::take(&mut self.sstables);
             self.sstables = compaction.compact(old, &self.data_dir)?;
-        }               
+        }
+
         Ok(())
     }
 

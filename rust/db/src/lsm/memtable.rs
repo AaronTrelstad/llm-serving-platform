@@ -1,13 +1,13 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crate::skiplist::skiplist::SkipList;
 use std::io::Result;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-const MAX_SIZE: usize = 4 * 1024 * 1024;
+const MAX_SIZE: usize = 64 * 1024 * 1024;
 
 pub struct MemTable {
     data: SkipList,
     size: AtomicUsize,
-    frozen: AtomicBool
+    frozen: AtomicBool,
 }
 
 impl MemTable {
@@ -27,7 +27,7 @@ impl MemTable {
         if self.frozen.load(Ordering::Acquire) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "memtable is frozen"
+                "memtable is frozen",
             ));
         }
 
@@ -37,7 +37,7 @@ impl MemTable {
 
         Ok(())
     }
-    
+
     pub fn scan(&self, start: &[u8], end: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
         self.data.scan(start, end)
     }

@@ -1,14 +1,14 @@
 use crossbeam_epoch::{Atomic, Owned, Shared};
-use std::sync::atomic::Ordering;
 use rand;
+use std::sync::atomic::Ordering;
 
 const MAX_LEVEL: usize = 16;
 const PROBABILITY: f64 = 0.5;
 
 pub struct Node {
-    key:   Vec<u8>,
+    key: Vec<u8>,
     value: Vec<u8>,
-    next:  Vec<Atomic<Node>>,
+    next: Vec<Atomic<Node>>,
 }
 
 impl Node {
@@ -21,7 +21,7 @@ impl Node {
     }
 
     fn head() -> Self {
-        Self::new(vec![], vec![], MAX_LEVEL)  
+        Self::new(vec![], vec![], MAX_LEVEL)
     }
 }
 
@@ -46,9 +46,7 @@ impl SkipList {
 
             for level in (0..MAX_LEVEL).rev() {
                 loop {
-                    let next = (*current.deref())
-                        .next[level]
-                        .load(Ordering::Acquire, &guard);
+                    let next = (*current.deref()).next[level].load(Ordering::Acquire, &guard);
 
                     if next.is_null() {
                         break;
@@ -57,7 +55,7 @@ impl SkipList {
                     match (*next.deref()).key.as_slice().cmp(key) {
                         std::cmp::Ordering::Less => current = next,
                         std::cmp::Ordering::Equal => return Some((*next.deref()).value.clone()),
-                        std::cmp::Ordering::Greater => break
+                        std::cmp::Ordering::Greater => break,
                     }
                 }
             }
@@ -85,7 +83,7 @@ impl SkipList {
                     match next.deref().key.as_slice().cmp(key.as_slice()) {
                         std::cmp::Ordering::Less => current = next,
                         std::cmp::Ordering::Equal => return,
-                        std::cmp::Ordering::Greater => break
+                        std::cmp::Ordering::Greater => break,
                     }
                 }
 
@@ -101,18 +99,17 @@ impl SkipList {
                     new_node.deref().next[i].store(next, Ordering::Relaxed);
 
                     match update[i].deref().next[i].compare_exchange(
-                        next, 
+                        next,
                         new_node,
                         Ordering::Release,
                         Ordering::Relaxed,
                         &guard,
                     ) {
                         Ok(_) => break,
-                        Err(_) => continue
+                        Err(_) => continue,
                     }
                 }
             }
-
         }
 
         self.size.fetch_add(1, Ordering::Relaxed);
