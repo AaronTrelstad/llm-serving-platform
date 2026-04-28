@@ -29,7 +29,7 @@ impl LSMTree {
         Ok(None)
     }
 
-    pub fn open(data_dir: PathBuf) -> Result<Self> {
+    pub fn open(data_dir: &PathBuf) -> Result<Self> {
         std::fs::create_dir_all(&data_dir)?;
         let wal_path = data_dir.join("wal.log");
         let mut wal = WAL::open(wal_path)?;
@@ -62,7 +62,7 @@ impl LSMTree {
             wal,
             memtable,
             sstables,
-            data_dir,
+            data_dir: data_dir.clone(),
         })
     }
 

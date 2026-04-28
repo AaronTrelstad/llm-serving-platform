@@ -2,6 +2,5 @@
 resolver = "3"
 members = [
     "rust/transformer",
-    "rust/kvcache",
     "rust/db",
 ]

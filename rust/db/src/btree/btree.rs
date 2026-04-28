@@ -93,7 +93,7 @@ impl BTree {
             index += 1;
         }
 
-        while index < node.keys.len() && node.keys[index].0 < end {
+        while index < node.keys.len() && node.keys[index].0 <= end {
             if !node.is_leaf {
                 Self::range_search(&node.children[index], start, end, results);
             }

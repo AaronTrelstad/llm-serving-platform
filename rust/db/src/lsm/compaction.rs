@@ -3,7 +3,7 @@ use crate::lsm::memtable::MemTable;
 use crate::wal::wal::WALRecordType;
 use std::collections::BTreeMap;
 use std::io::Result;
-use std::path::PathBuf;
+use std::path::Path;
 
 pub struct RetentionPolicy {
     pub record_type: WALRecordType,
@@ -34,7 +34,7 @@ impl Compaction {
         }
     }
 
-    pub fn compact(&self, mut sstables: Vec<SSTable>, data_dir: &PathBuf) -> Result<Vec<SSTable>> {
+    pub fn compact(&self, mut sstables: Vec<SSTable>, data_dir: &Path) -> Result<Vec<SSTable>> {
         let mut all_records: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
 
         for table in sstables.iter_mut().rev() {

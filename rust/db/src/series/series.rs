@@ -65,21 +65,41 @@ pub struct Series {
     lsm: LSMTree,
     inference_job_btree: BTree,
     gpu_metrics_btree: BTree,
+    job_timestamps: HashMap<String, u64>,
     buf: Vec<u8>,
 }
 
 impl Series {
-    pub fn new(data_dir: PathBuf) -> Result<Self> {
+    pub fn new(data_dir: &PathBuf) -> Result<Self> {
         Ok(Self {
             lsm: LSMTree::open(data_dir)?,
             inference_job_btree: BTree::new(4),
             gpu_metrics_btree: BTree::new(4),
+            job_timestamps: HashMap::new(),
             buf: Vec::with_capacity(1024),
         })
     }
 
+    fn job_key(timestamp: u64, job_id: &str) -> Vec<u8> {
+        let mut key = Vec::with_capacity(9 + job_id.len());
+        key.push(0u8);
+        key.extend_from_slice(&timestamp.to_be_bytes());
+        key.extend_from_slice(job_id.as_bytes());
+        key
+    }
+
+    fn metric_key(timestamp: u64, worker_id: &str) -> Vec<u8> {
+        let mut key = Vec::with_capacity(9 + worker_id.len());
+        key.push(1u8);
+        key.extend_from_slice(&timestamp.to_be_bytes());
+        key.extend_from_slice(worker_id.as_bytes());
+        key
+    }
+
     pub fn insert_job(&mut self, job: JobRecord) -> Result<()> {
-        let key = job.job_id.as_bytes().to_vec();
+        let key = Self::job_key(job.timestamp, &job.job_id);
+
+        self.job_timestamps.insert(job.job_id.clone(), job.timestamp);
 
         self.buf.clear();
         bincode::serialize_into(&mut self.buf, &job)
@@ -94,8 +114,7 @@ impl Series {
     }
 
     pub fn insert_metrics(&mut self, metrics: MetricRecord) -> Result<()> {
-        let mut key = metrics.worker_id.as_bytes().to_vec();
-        key.extend_from_slice(&metrics.timestamp.to_be_bytes());
+        let key = Self::metric_key(metrics.timestamp, &metrics.worker_id);
 
         let value = bincode::serialize(&metrics)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
@@ -109,7 +128,11 @@ impl Series {
     }
 
     pub fn get_job(&mut self, job_id: &str) -> Result<Option<JobRecord>> {
-        let key = job_id.as_bytes().to_vec();
+        let timestamp = match self.job_timestamps.get(job_id) {
+            Some(&ts) => ts,
+            None => return Ok(None),
+        };
+        let key = Self::job_key(timestamp, job_id);
 
         match self.lsm.get(&key)? {
             Some(bytes) => {
@@ -127,7 +150,11 @@ impl Series {
         let mut jobs = Vec::new();
 
         for job_id in job_ids {
-            let key = job_id.as_bytes().to_vec();
+            let timestamp = match self.job_timestamps.get(&job_id) {
+                Some(&ts) => ts,
+                None => continue,
+            };
+            let key = Self::job_key(timestamp, &job_id);
             match self.lsm.get(&key)? {
                 Some(bytes) => {
                     let job: JobRecord = bincode::deserialize(&bytes)
@@ -173,8 +200,7 @@ impl Series {
             let worker_id = parts[0];
             let timestamp: u64 = parts[1].parse().unwrap_or(0);
 
-            let mut key = worker_id.as_bytes().to_vec();
-            key.extend_from_slice(&timestamp.to_be_bytes());
+            let key = Self::metric_key(timestamp, worker_id);
 
             match self.lsm.get(&key)? {
                 Some(bytes) => {
