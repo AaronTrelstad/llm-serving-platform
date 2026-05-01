@@ -12,4 +12,5 @@ serde        = { version = "1", features = ["derive"] }
 memmap2      = "0.9"
 safetensors  = "0.4"
 tokenizers   = "0.19"
+bytemuck = { version = "1", features = ["derive"] }
 

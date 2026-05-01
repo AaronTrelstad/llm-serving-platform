@@ -16,10 +16,10 @@ pub struct Llama {
 impl Llama {
     pub fn new(
         embedding: Embedding,
-        blocks:    Vec<LlamaBlock>,
-        norm:      RMSNorm,
-        lm_head:   Linear,
-        config:    LlamaConfig,
+        blocks: Vec<LlamaBlock>,
+        norm: RMSNorm,
+        lm_head: Linear,
+        config: LlamaConfig,
     ) -> Self {
         Self {
             embedding,
@@ -41,13 +41,17 @@ impl Llama {
         for (block, kv_cache) in self.blocks.iter().zip(kv_caches.iter_mut()) {
             x = block.forward(&x, kv_cache, pos)?;
         }
-        
+
         let x = self.norm.forward(&x)?;
-        let x = x.narrow(1, x.dim(1)? - 1, 1)?;  
+        let x = x.narrow(1, x.dim(1)? - 1, 1)?;
         self.lm_head.forward(&x)
     }
 
     pub fn empty_kv_caches(&self) -> Vec<Option<KVCache>> {
         vec![None; self.config.n_layers]
+    }
+
+    pub fn n_layers(&self) -> usize {
+        self.blocks.len()
     }
 }

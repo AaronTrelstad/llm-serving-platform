@@ -7,3 +7,5 @@ pub mod block;
 pub mod model;
 pub mod weights;
 pub mod tokenizer;
+pub mod generate;
+
