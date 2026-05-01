@@ -1,5 +1,5 @@
 use crate::config::LlamaConfig;
-use candle_core::{D, DType, Device, Result, Tensor};
+use candle_core::{D, Device, Result, Tensor};
 
 pub struct RoPE {
     sin: Tensor,
