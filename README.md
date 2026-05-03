@@ -12,6 +12,6 @@ Most LLM serving systems run prefill and decode on the same GPU. This system sep
  
 **KV Cache** (`rust/kvcache`) — PagedAttention block allocator. Fixed-size blocks eliminate memory fragmentation. Block transfer protocol for disaggregated inference. LRU eviction when GPU memory is under pressure.
  
-**Database** (`rust/db`) — Append-only time-series DB. WAL with group commit, lock-free skiplist memtable, SSTable with bloom filters, size-tiered compaction with TTL, B-tree time-range index. ~20k writes/sec, 427ns point reads.
+**Database** (`rust/db`) — Append-only time-series DB. WAL with group commit, lock-free skiplist memtable, SSTable with bloom filters, size-tiered compaction with TTL, B-tree time-range index. ~20k writes/sec.
  
 **Scheduler** (`go/scheduler`) — GPU-aware HTTP backend. Two-phase routing: selects prefill worker by GPU utilization, decode worker by KV cache availability. Prometheus metrics, Kubernetes autoscaling.
