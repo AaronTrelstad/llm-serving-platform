@@ -16,7 +16,6 @@ const (
 	StatusFailed     JobStatus = "failed"
 )
 
-// Unit of worker that is passed through the system
 type InferenceJob struct {
 	ID      string `json:"id"`
 	Prompt  string `json:"prompt"`
@@ -36,7 +35,6 @@ type InferenceJob struct {
 	LatencyMs int64  `json:"latency_ms"`
 }
 
-// GPU inference worker node
 type Worker struct {
 	ID string `json:"id"`
 	Endpoint string `json:"endpoint"`
